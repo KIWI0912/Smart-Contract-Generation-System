@@ -26,14 +26,69 @@
 
 ```
 project-root/
-├── src/...
-├── public/...
-├── styles/...
-├── docs/...
-└── dist/
-```
+├── README.md
+├── LICENSE
+├── package.json
+├── package-lock.json (可选)
+├── .gitignore
+├── .editorconfig
+├── .eslintrc.cjs
+├── .prettierrc
+├── .env.example
+├── src/
+│   ├── index.js                # 入口（注册路由或页面初始化）
+│   ├── core/
+│   │   ├── blockchain.js       # 链接 Web3 / Provider 适配
+│   │   ├── config.js           # 环境 + 网络配置
+│   │   ├── security/           # 前端安全（输入校验、编码）
+│   │   └── monitor/            # 前端可用性能监控（不含 fs）
+│   ├── modules/
+│   │   ├── contract/
+│   │   │   ├── contract-logic.js
+│   │   │   ├── contract.js
+│   │   │   └── template-loader.js
+│   │   ├── history/
+│   │   │   └── history-storage.js
+│   │   ├── models/
+│   │   │   └── models.js
+│   │   └── tests/ (若使用 Vitest colocated)
+│   ├── utils/
+│   │   ├── hash/
+│   │   │   ├── hash-utils.js
+│   │   │   └── crypto-adapter.js
+│   │   ├── validation.js
+│   │   └── helpers.js
+│   ├── ui/
+│   │   ├── pages/
+│   │   │   ├── index.js
+│   │   │   ├── generator.js
+│   │   │   ├── history.js
+│   │   │   └── settings.js
+│   │   └── components/
+│   └── tests/                  # 若集中管理测试
+├── public/
+│   ├── index.html
+│   ├── generator.html
+│   ├── history.html
+│   ├── settings.html
+│   ├── favicon.ico
+│   ├── assets/
+│   └── official-templates.json
+├── styles/
+│   ├── base.css
+│   ├── components.css
+│   ├── utilities.css
+│   ├── style.css
+│   └── tokens.css (新增设计变量)
+├── dist/ (构建输出)
+├── docs/
+│   ├── architecture.md
+│   ├── template-schema.md
+│   ├── validation-rules.md
+│   └── api.md
+└── tests/ (若单独放置 Jest/Vitest)
 
-详见 docs/architecture.md（架构文档，需补充）。
+```
 
 ---
 
