@@ -301,6 +301,11 @@ class SecurityManager {
       }
 
       return { warnings, errors };
+
+     if (transaction.gasPrice && transaction.gasPrice > 100000000000) {
+         throw new Error('Gas价格过高，可能存在风险');
+      }
+
   }
 
   // 区块链交易安全验证
