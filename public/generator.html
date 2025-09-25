@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>合同生成 - 区块链智能合同生成系统</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="./css/style.css">
+  <script src="./assets/js/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/zh.js"></script>
+  <style>
+    /* 只加少量预览按钮微调，不影响全局 */
+    .preview-toolbar {
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .preview-status {
+      font-size:.75rem;
+      color:var(--color-text-secondary);
+      margin-top:4px;
+      line-height:1.4;
+      white-space:pre-line;
+    }
+    #preview-container { position:relative; }
+    #preview-container.loading::after {
+      content:"正在生成预览...";
+      position:absolute; inset:0;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; font-weight:600;
+      color:var(--color-primary);
+      background:rgba(255,255,255,0.65);
+      backdrop-filter:blur(4px);
+      border:1px solid var(--color-border);
+      border-radius:12px;
+    }
+    .dark #preview-container.loading::after {
+      background:rgba(30,41,59,0.55);
+      color:#fff;
+    }
+    object.pdf-object {
+      width:100%;
+      height:420px;
+      border:1px solid var(--color-border);
+      border-radius:12px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="shadow bg-transparent backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">区块链智能合同生成系统</h1>
+      <div class="flex space-x-6 text-sm">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="generator.html" class="nav-link active">合同生成</a>
+        <a href="history.html" class="nav-link">历史记录</a>
+        <a href="settings.html" class="nav-link">系统设置</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <h1 class="section-title">合同生成中心</h1>
+
+    <div class="stepper" id="stepper">
+      <div class="step active" data-step="1">选择模板</div>
+      <div class="step" data-step="2">填写信息</div>
+      <div class="step" data-step="3">生成 PDF</div>
+      <div class="step" data-step="4">下载</div>
+    </div>
+
+    <section class="app-section fade-in" id="form-section">
+      <form id="contract-form" novalidate>
+        <div class="form-group no-float">
+          <label for="template-select" class="floating">合同模板</label>
+          <select id="template-select" name="template-select" class="w-full">
+            <option value="" disabled selected>请选择模板</option>
+          </select>
+          <div class="form-error">请选择一个模板</div>
+        </div>
+
+          <div id="dynamic-fields" class="fade-in hidden">
+          <div id="fields-skeleton" class="skeleton" style="height:90px; margin-bottom:12px; border-radius:12px;"></div>
+        </div>
+
+        <div class="mt-6 flex gap-3 flex-wrap">
+          <button type="button" id="generate-contract" class="btn">生成合同</button>
+          <button type="reset" class="btn btn-secondary" id="reset-btn">重置</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="download-section" class="download-card mt-10 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <span class="success-badge">生成成功</span>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" id="regen-btn" type="button" style="padding:8px 14px;">重新生成</button>
+        </div>
+      </div>
+      <p class="text-sm mb-4 text-gray-600 dark:text-gray-300">点击下方按钮下载您的合同 PDF，或直接在下方预览。</p>
+      <div class="preview-toolbar">
+        <a id="download-link" class="btn" download>下载合同 PDF</a>
+        <button type="button" id="refresh-preview" class="btn btn-secondary" style="padding:10px 18px;">刷新预览</button>
+        <button type="button" id="switch-preview-mode" class="btn btn-secondary" style="padding:10px 18px;">切换预览容器</button>
+      </div>
+      <div class="preview-status" id="preview-status"></div>
+      <div id="preview-container">
+        <!-- 默认 iframe 方式 -->
+        <iframe id="pdf-preview" title="合同PDF预览" class="w-full mt-4" style="height:420px; border:1px solid var(--color-border); border-radius:12px;" loading="lazy"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <button class="toggle-theme-btn" id="toggle-theme">切换深色</button>
+
+  <script type="module">
+    import ContractGenerator from './js/contract.js';
+    import { templateData, initTemplateData } from './js/templates.js';
+
+    initTemplateData();
+
+    function logStatus(msg, append=true) {
+      const box = document.getElementById('preview-status');
+      if (!box) return;
+      const time = new Date().toLocaleTimeString();
+      if (append) {
+        box.textContent += '['+time+'] ' + msg + '\\n';
+      } else {
+        box.textContent = '['+time+'] ' + msg + '\\n';
+      }
+    }
+
+    function setStep(stepIndex) {
+      const steps = document.querySelectorAll('#stepper .step');
+      steps.forEach((s,i)=>{
+        s.classList.toggle('active', i===stepIndex-1);
+        s.classList.toggle('done', i<stepIndex-1);
+      });
+    }
+
+    function syncFloating(group) {
+      if (group.classList.contains('no-float')) return;
+      const input = group.querySelector('input, select, textarea');
+      if (!input) return;
+      if (input.value && input.value.trim() !== '') group.classList.add('filled');
+      else group.classList.remove('filled');
+    }
+    function attachFloatingWatcher(group){
+      if (group.classList.contains('no-float')) return;
+      const input = group.querySelector('input,select,textarea');
+      if(!input) return;
+      ['input','change','blur'].forEach(evt=>{
+        input.addEventListener(evt,()=>syncFloating(group));
+      });
+      syncFloating(group);
+    }
+
+    async function loadFontAsBase64(url) {
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('字体加载失败:'+res.status);
+      const ab = await res.arrayBuffer();
+      const u8 = new Uint8Array(ab);
+      let binary = '';
+      for (let i=0;i<u8.length;i++) binary += String.fromCharCode(u8[i]);
+      return btoa(binary);
+    }
+    async function ensureFont(doc, jsPDFRef, fontUrl, fontName, fontStyle='normal') {
+      try {
+        if (doc.getFontList && doc.getFontList()[fontName]) return true;
+        const base64 = await loadFontAsBase64(fontUrl);
+        if (doc.addFileToVFS) {
+          doc.addFileToVFS(fontName + '.ttf', base64);
+          doc.addFont(fontName + '.ttf', fontName, fontStyle);
+        } else if (jsPDFRef && jsPDFRef.API.addFileToVFS) {
+          jsPDFRef.API.addFileToVFS(fontName + '.ttf', base64);
+          jsPDFRef.API.addFont(fontName + '.ttf', fontName, fontStyle);
+        }
+        return true;
+      } catch(e) {
+        console.warn('字体嵌入失败，使用默认', e);
+        return false;
+      }
+    }
+    // ===== 历史记录相关函数 =====
+    async function sha256ArrayBuffer(buffer) {
+     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+     const hashArray = Array.from(new Uint8Array(hashBuffer));
+     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+   }
+
+    function saveToHistory(record) {
+     try {
+        let history = JSON.parse(localStorage.getItem('contractHistory') || '[]');
+        history.unshift(record);
+        if (history.length > 100) history = history.slice(0, 100);
+        localStorage.setItem('contractHistory', JSON.stringify(history));
+        console.log('历史记录已保存:', record);
+      } catch (error) {
+        console.error('保存历史记录失败:', error);
+      }
+    }
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const templateSelect = document.getElementById('template-select');
+      const dynamicFields = document.getElementById('dynamic-fields');
+      const downloadSection = document.getElementById('download-section');
+      const downloadLink = document.getElementById('download-link');
+      const regenBtn = document.getElementById('regen-btn');
+      const refreshBtn = document.getElementById('refresh-preview');
+      const switchPreviewBtn = document.getElementById('switch-preview-mode');
+      const previewContainer = document.getElementById('preview-container');
+
+      let lastDocInstance = null;        // 保存上一次 jsPDF 实例
+      let lastTemplateName = '';
+      let previewMode = 'iframe';        // iframe | object | datauri
+
+      const contractGenerator = new ContractGenerator(templateData);
+
+      function populateTemplates() {
+        templateSelect.innerHTML = '<option value="" disabled selected>请选择模板</option>';
+        templateData.forEach(t=>{
+          const opt = document.createElement('option');
+          opt.value = t.name;
+          opt.textContent = t.name;
+          templateSelect.appendChild(opt);
+        });
+      }
+      populateTemplates();
+      attachFloatingWatcher(templateSelect.closest('.form-group'));
+
+      templateSelect.addEventListener('change', () => {
+        if (!templateSelect.value) return;
+        setStep(2);
+        renderDynamicFields(templateSelect.value);
+      });
+
+      function normalizeOptions(raw) {
+        if (!raw) return [];
+        return raw.map(o => {
+          if (typeof o === 'string') return { value: o, label: o };
+          if (o && typeof o === 'object') {
+            return {
+              value: o.value !== undefined ? o.value : (o.label || ''),
+              label: o.label !== undefined ? o.label : (o.value || '')
+            };
+          }
+          return { value: String(o), label: String(o) };
+        });
+      }
+
+      function createInputGroup(field) {
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        const type = field.type || 'text';
+        const label = field.label || field.name;
+        if (type === 'date') {
+          group.innerHTML = `
+            <input type="text" name="${field.name}" class="flatpickr" placeholder="${field.placeholder || ''}">
+            <label class="floating">${label}</label>
+            <div class="form-error">请选择 ${label}</div>
+          `;
+        } else {
+          group.innerHTML = `
+            <input type="${type}" name="${field.name}" placeholder="${field.placeholder || ''}">
+            <label class="floating">${label}</label>
+            <div class="form-error">请输入 ${label}</div>
+          `;
+        }
+        return group;
+      }
+      function createSelectGroup(field, options) {
+        const group = document.createElement('div');
+        group.className = 'form-group no-float';
+        const label = field.label || field.name;
+        group.innerHTML = `
+          <label class="floating" for="${field.name}">${label}</label>
+          <select name="${field.name}" id="${field.name}">
+            <option value="" disabled selected>${field.placeholder || '请选择' + label}</option>
+            ${options.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}
+          </select>
+          <div class="form-error">请选择 ${label}</div>
+        `;
+        return group;
+      }
+      function createRadioGroup(field, options) {
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        const label = field.label || field.name;
+        const addOther = field.addOther;
+        let otherHTML = '';
+        if (addOther) {
+          otherHTML = `
+            <label class="radio-pill">
+              <input type="radio" name="${field.name}" value="其他">
+              <span>其他</span>
+            </label>
+            <input type="text" name="${field.name}-remark" class="hidden mt-2 w-full border rounded px-3 py-2 text-sm" placeholder="请输入备注（选择其他时显示）"/>
+          `;
+        }
+        group.innerHTML = `
+          <div class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">${label}</div>
+          <div class="radio-pill-group" data-name="${field.name}">
+            ${options.map(o=>`
+              <label class="radio-pill">
+                <input type="radio" name="${field.name}" value="${o.value}">
+                <span>${o.label}</span>
+              </label>
+            `).join('')}
+            ${otherHTML}
+          </div>
+        `;
+        return group;
+      }
+      function createCheckboxPillGroup(field, options) {
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        const label = field.label || field.name;
+        const addOther = field.addOther;
+        let otherHTML = '';
+        if (addOther) {
+          otherHTML = `
+            <label class="pill-check">
+              <input type="checkbox" name="${field.name}" value="其他">
+              <span>其他</span>
+            </label>
+            <input type="text" name="${field.name}-remark" class="hidden mt-2 w-full border rounded px-3 py-2 text-sm" placeholder="请输入备注（选择其他时显示）"/>
+          `;
+        }
+        group.innerHTML = `
+          <div class="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">${label}（可多选）</div>
+          <div class="pill-check-group radio-pill-group" data-name="${field.name}">
+            ${options.map(o=>`
+              <label class="pill-check">
+                <input type="checkbox" name="${field.name}" value="${o.value}">
+                <span>${o.label}</span>
+              </label>
+            `).join('')}
+            ${otherHTML}
+          </div>
+        `;
+        return group;
+      }
+
+      function renderDynamicFields(templateName) {
+        const tpl = templateData.find(t=>t.name===templateName);
+        dynamicFields.innerHTML = '';
+        dynamicFields.classList.remove('hidden');
+
+        if (!tpl || !Array.isArray(tpl.fields) || tpl.fields.length === 0) {
+          dynamicFields.innerHTML = '<p class="text-sm text-gray-500">该模板没有可填写字段。</p>';
+          return;
+        }
+
+        tpl.fields.forEach(field => {
+          const t = (field.type || 'text').toLowerCase();
+          const hasOptions = Array.isArray(field.options) && field.options.length > 0;
+          let el;
+          if (t === 'select' && hasOptions) {
+            el = createSelectGroup(field, normalizeOptions(field.options));
+          } else if (['radio','options','enum'].includes(t) && hasOptions) {
+            el = createRadioGroup(field, normalizeOptions(field.options));
+          } else if (t === 'checkbox' && hasOptions && (field.multiple !== false)) {
+            el = createCheckboxPillGroup(field, normalizeOptions(field.options));
+          } else if (t === 'date') {
+            el = createInputGroup(field);
+          } else if (t === 'checkbox' && !hasOptions) {
+            el = createRadioGroup({...field, addOther:true}, normalizeOptions(['是','否']));
+          } else {
+            el = createInputGroup(field);
+          }
+          dynamicFields.appendChild(el);
+        });
+
+        dynamicFields.querySelectorAll('.radio-pill-group').forEach(groupEl => {
+          const remarkInput = groupEl.querySelector('input[type="text"][name$="-remark"]');
+          const radios = groupEl.querySelectorAll('input[type="radio"]');
+          if (radios.length && remarkInput) {
+            radios.forEach(r=>{
+              r.addEventListener('change', ()=>{
+                if (r.value === '其他') remarkInput.classList.remove('hidden');
+                else { remarkInput.classList.add('hidden'); remarkInput.value=''; }
+              });
+            });
+          }
+        });
+
+        dynamicFields.querySelectorAll('.pill-check-group').forEach(groupEl=>{
+          const remarkInput = groupEl.querySelector('input[type="text"][name$="-remark"]');
+          const others = groupEl.querySelectorAll('input[type="checkbox"][value="其他"]');
+          if (remarkInput && others.length) {
+            others.forEach(o=>{
+              o.addEventListener('change', ()=>{
+                if (o.checked) remarkInput.classList.remove('hidden');
+                else { remarkInput.classList.add('hidden'); remarkInput.value=''; }
+              });
+            });
+          }
+        });
+
+        dynamicFields.querySelectorAll('.flatpickr').forEach(el=>{
+          flatpickr(el, { locale: 'zh', dateFormat: 'Y-m-d' });
+        });
+
+        dynamicFields.querySelectorAll('.form-group').forEach(g=>attachFloatingWatcher(g));
+      }
+
+      // ===== 预览相关 Begin =====
+      function clearPreviewContainer() {
+        previewContainer.classList.remove('loading');
+        const iframe = document.getElementById('pdf-preview');
+        const oldObj = previewContainer.querySelector('object.pdf-object');
+        if (iframe) iframe.src = 'about:blank';
+        if (oldObj) oldObj.remove();
+      }
+
+      function setIframePreview(url) {
+        clearPreviewContainer();
+        const iframe = document.getElementById('pdf-preview');
+        iframe.style.display = 'block';
+        iframe.src = url + '#view=FitH';
+        logStatus('使用 iframe 方式加载: ' + url);
+      }
+
+      function setObjectPreview(url) {
+        clearPreviewContainer();
+        const iframe = document.getElementById('pdf-preview');
+          if (iframe) iframe.style.display = 'none';
+        const obj = document.createElement('object');
+        obj.type = 'application/pdf';
+        obj.className = 'pdf-object mt-4';
+        obj.data = url + '#view=FitH';
+        obj.innerHTML = '<p>无法在此浏览器直接预览 PDF，请点击上方“下载合同 PDF”。</p>';
+        previewContainer.appendChild(obj);
+        logStatus('使用 object 方式加载: ' + url);
+      }
+
+      function setDataUriPreview(dataUri) {
+        clearPreviewContainer();
+        const iframe = document.getElementById('pdf-preview');
+        iframe.style.display = 'block';
+        iframe.src = dataUri;
+        logStatus('使用 Data URI 方式加载（Base64，Safari 兼容方案）。');
+      }
+
+      async function tryPreview(doc) {
+        previewContainer.classList.add('loading');
+        logStatus('开始生成预览...', false);
+
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+        try {
+          // 1. 优先使用 bloburl (jsPDF 内置)
+          let url = '';
+          try {
+            url = doc.output('bloburl');
+            logStatus('bloburl 获取成功。');
+          } catch(e) {
+            logStatus('bloburl 失败: ' + e.message);
+          }
+
+          if (url && previewMode === 'iframe') {
+            setIframePreview(url);
+            previewContainer.classList.remove('loading');
+            return true;
+          }
+          if (url && previewMode === 'object') {
+            setObjectPreview(url);
+            previewContainer.classList.remove('loading');
+            return true;
+          }
+
+          // 2. 手动 Blob
+          let manualBlobUrl = '';
+          try {
+            const blob = doc.output('blob');
+            manualBlobUrl = URL.createObjectURL(blob);
+            logStatus('手动 Blob URL 生成成功。');
+          } catch(e) {
+            logStatus('手动 Blob 失败: ' + e.message);
+          }
+          if (manualBlobUrl) {
+            if (previewMode === 'object') setObjectPreview(manualBlobUrl);
+            else setIframePreview(manualBlobUrl);
+            previewContainer.classList.remove('loading');
+            return true;
+          }
+
+          // 3. Safari 或全部失败时用 Data URI
+          logStatus('尝试使用 Data URI 方式...');
+          const dataUri = doc.output('datauristring');
+          setDataUriPreview(dataUri);
+          previewContainer.classList.remove('loading');
+          return true;
+
+        } catch (err) {
+          logStatus('预览生成最终失败: ' + err.message);
+          previewContainer.classList.remove('loading');
+          return false;
+        }
+      }
+      // ===== 预览相关 End =====
+
+      document.getElementById('generate-contract').addEventListener('click', async () => {
+        const selectedTemplateName = templateSelect.value;
+        if (!selectedTemplateName) {
+          alert('请选择合同模板！');
+          return;
+        }
+
+        const fieldData = {};
+        const groups = dynamicFields.querySelectorAll('.form-group');
+
+        groups.forEach(g=>{
+          const radioGroup = g.querySelector('.radio-pill-group');
+          if (radioGroup) {
+            const name = radioGroup.getAttribute('data-name');
+            const radios = radioGroup.querySelectorAll('input[type="radio"]');
+            const checks = radioGroup.querySelectorAll('input[type="checkbox"]');
+            if (radios.length) {
+              const chosen = [...radios].find(r=>r.checked);
+              if (chosen) fieldData[name] = chosen.value;
+              const remark = g.querySelector(`input[name="${name}-remark"]`);
+              if (remark && !remark.classList.contains('hidden')) {
+                fieldData[name + '-remark'] = remark.value;
+              }
+            } else if (checks.length) {
+              const chosenVals = [...checks].filter(c=>c.checked).map(c=>c.value);
+              if (chosenVals.length) fieldData[name] = chosenVals;
+              const remark = g.querySelector(`input[name="${name}-remark"]`);
+              if (remark && !remark.classList.contains('hidden')) {
+                fieldData[name + '-remark'] = remark.value;
+              }
+            }
+            return;
+          }
+          const input = g.querySelector('input[name]:not([type="radio"]):not([type="checkbox"]), select[name], textarea[name]');
+          if (input) fieldData[input.name] = input.value;
+        });
+
+        const missing = Object.values(fieldData).some(v => v===undefined || v===null || v==='' || (Array.isArray(v) && v.length===0));
+        if (missing) {
+          if (!confirm('存在未填写字段，仍继续生成吗？')) return;
+        }
+
+        setStep(3);
+
+        try {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ unit:'mm', format:'a4' });
+          const fontUrl = './assets/fonts/simsun.ttf';
+          const fontName = 'SimSun';
+          const fontOk = await ensureFont(doc, jsPDF, fontUrl, fontName, 'normal');
+          if (fontOk) doc.setFont(fontName,'normal'); else doc.setFont('helvetica','normal');
+
+          const leftMargin = 12;
+          let y = 18;
+          doc.setFontSize(18);
+          doc.text(`合同模板：${selectedTemplateName}`, leftMargin, y);
+          y += 12;
+          doc.setFontSize(12);
+          doc.text('合同内容：', leftMargin, y);
+          y += 8;
+
+          const pageHeight = doc.internal.pageSize.getHeight();
+          const lineHeight = 7;
+          const maxWidth = 190;
+
+          for (const [key,val] of Object.entries(fieldData)) {
+            const displayVal = Array.isArray(val) ? val.join('，') : String(val);
+            const line = key + ': ' + displayVal;
+            const wrapped = doc.splitTextToSize(line, maxWidth);
+            for (const w of wrapped) {
+              if (y + lineHeight > pageHeight - 12) {
+                doc.addPage();
+                y = 18;
+              }
+              doc.text(w, leftMargin, y);
+              y += lineHeight;
+            }
+          }
+
+          // 保存引用以便刷新
+          lastDocInstance = doc;
+          lastTemplateName = selectedTemplateName;
+
+          // 下载链接
+          try {
+            const pdfBlob = doc.output('blob');
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            downloadLink.href = pdfUrl;
+            downloadLink.download = `${selectedTemplateName}-合同.pdf`;
+          } catch(e) {
+            logStatus('生成下载链接失败（使用 data URI 降级）: '+e.message);
+            const dataUri = doc.output('datauristring');
+            downloadLink.href = dataUri;
+            downloadLink.download = `${selectedTemplateName}-合同.pdf`;
+          }
+
+          downloadSection.classList.remove('hidden');
+          setStep(4);
+
+          // 自动生成预览
+          await tryPreview(doc);
+
+        } catch(e) {
+          console.error(e);
+          alert('生成失败，请稍后再试');
+        }
+
+        const record = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2,8),
+          templateName: selectedTemplateName,
+          
+
+      });
+
+      document.getElementById('reset-btn').addEventListener('click', () => {
+        dynamicFields.classList.add('hidden');
+        dynamicFields.innerHTML = '<div id="fields-skeleton" class="skeleton" style="height:90px; margin-bottom:12px; border-radius:12px;"></div>';
+        downloadSection.classList.add('hidden');
+        setStep(1);
+        lastDocInstance = null;
+        clearPreviewContainer();
+      });
+
+      regenBtn.addEventListener('click', () => {
+        downloadSection.classList.add('hidden');
+        setStep(2);
+        clearPreviewContainer();
+      });
+
+      refreshBtn.addEventListener('click', async () => {
+        if (!lastDocInstance) {
+          alert('还没有已生成的合同。');
+          return;
+        }
+        logStatus('手动刷新预览...');
+        await tryPreview(lastDocInstance);
+      });
+
+      switchPreviewBtn.addEventListener('click', async () => {
+        if (!lastDocInstance) {
+          alert('还没有已生成的合同。');
+          return;
+        }
+        if (previewMode === 'iframe') previewMode = 'object';
+        else if (previewMode === 'object') previewMode = 'datauri';
+        else previewMode = 'iframe';
+        logStatus('切换预览模式为: ' + previewMode);
+        await tryPreview(lastDocInstance);
+      });
+
+      (function enhanceUI(){
+        document.querySelectorAll('.form-group').forEach(g=>attachFloatingWatcher(g));
+        document.body.addEventListener('click', e=>{
+          const btn = e.target.closest('.btn');
+          if(!btn) return;
+          const rect = btn.getBoundingClientRect();
+          const ripple = document.createElement('span');
+          ripple.className='ripple';
+          const size = Math.max(rect.width, rect.height);
+          ripple.style.width = ripple.style.height = size+'px';
+          ripple.style.left = (e.clientX - rect.left - size/2)+'px';
+          ripple.style.top = (e.clientY - rect.top - size/2)+'px';
+          btn.appendChild(ripple);
+          setTimeout(()=>ripple.remove(),650);
+        });
+
+        const toggleBtn = document.getElementById('toggle-theme');
+        function applyTheme(mode){
+          document.documentElement.classList.toggle('dark', mode==='dark');
+          localStorage.setItem('ui-theme', mode);
+          toggleBtn.textContent = mode==='dark' ? '切换浅色' : '切换深色';
+        }
+        const saved = localStorage.getItem('ui-theme') ||
+          (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+        applyTheme(saved);
+        toggleBtn.addEventListener('click', ()=>{
+          const now = document.documentElement.classList.contains('dark') ? 'dark':'light';
+          applyTheme(now==='dark' ? 'light':'dark');
+        });
+
+        const observer = new MutationObserver(()=>{
+          const realFields = dynamicFields.querySelectorAll('input, select, textarea, .radio-pill-group');
+          if (realFields.length>0) {
+            const skeleton = document.getElementById('fields-skeleton');
+            skeleton && skeleton.remove();
+            observer.disconnect();
+          }
+        });
+        observer.observe(dynamicFields, { childList:true, subtree:true });
+      })();
+    });
+  </script>
+</body>
+</html>

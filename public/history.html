@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>历史记录 - 区块链智能合同生成系统</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link id="main-style" rel="stylesheet" href="./css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+  <meta name="description" content="查看已生成的合同记录，支持搜索、过滤、排序、哈希校验与下载。">
+  <style>
+    /* 局部补强（主风格依赖 style.css） */
+    .hist-toolbar { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:14px; align-items:flex-end; }
+    .hist-toolbar .form-group { margin:0; min-width:180px; }
+    .record-table-wrapper {
+      position:relative;
+      background: var(--color-bg-glass);
+      border:1px solid var(--color-bg-glass-border);
+      border-radius: var(--radius-lg);
+      padding:4px 0 6px;
+      backdrop-filter:blur(var(--glass-blur));
+      box-shadow: var(--shadow-md);
+      overflow:hidden;
+    }
+    table.records { width:100%; border-collapse:separate; border-spacing:0 6px; font-size:0.8rem; }
+    table.records thead th {
+      text-align:left; padding:10px 14px;
+      font-weight:600; font-size:0.72rem; letter-spacing:.5px;
+      color:var(--color-text-secondary); text-transform:uppercase;
+    }
+    table.records tbody tr {
+      background:var(--color-bg-soft);
+      box-shadow:0 2px 6px -2px rgba(0,0,0,0.12);
+      transition:all var(--transition-fast);
+    }
+    table.records tbody tr:hover { transform:translateY(-2px); box-shadow:0 6px 18px -4px rgba(30,64,175,0.35); }
+    table.records tbody td { padding:10px 14px; vertical-align:middle; }
+    .status-chip {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:4px 10px; font-size:.6rem; font-weight:600;
+      border-radius:40px; letter-spacing:.5px;
+      background:linear-gradient(135deg,#3b82f6,#6366f1); color:#fff;
+    }
+    .status-chip.pending { background:linear-gradient(135deg,#f59e0b,#f97316); }
+    .status-chip.confirmed { background:linear-gradient(135deg,#16a34a,#059669); }
+    .status-chip.failed { background:linear-gradient(135deg,#dc2626,#b91c1c); }
+    .empty-box {
+      padding:60px 20px 56px;
+      text-align:center;
+      font-size:0.85rem;
+      color:var(--color-text-secondary);
+    }
+    .skeleton-row {
+      height:52px;
+      position:relative;
+      overflow:hidden;
+      border-radius:10px;
+      background:linear-gradient(90deg,rgba(255,255,255,0.04),rgba(255,255,255,0.12),rgba(255,255,255,0.04));
+      animation: shimmer 1.6s linear infinite;
+    }
+    @keyframes shimmer {
+      0% {background-position:-200px 0;}
+      100% {background-position:200px 0;}
+    }
+    .pagination {
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-end;
+      padding:14px 4px 4px;
+    }
+    .pagination button {
+      min-width:34px; height:34px; font-size:0.7rem; font-weight:600;
+      padding:0 8px;
+    }
+    .pagination button.active {
+      background:linear-gradient(135deg,#2563eb,#6366f1);
+      color:#fff;
+      box-shadow:0 6px 18px -4px rgba(30,64,175,0.35);
+    }
+    .detail-dialog-backdrop {
+      position:fixed; inset:0; background:rgba(15,23,42,0.55);
+      display:flex; align-items:center; justify-content:center;
+      z-index:999; backdrop-filter:blur(4px);
+      animation:fadeIn .25s ease;
+    }
+    .detail-dialog {
+      width:min(760px,92vw);
+      max-height:80vh;
+      overflow:auto;
+      background:var(--color-bg-glass);
+      border:1px solid var(--color-bg-glass-border);
+      border-radius:20px;
+      padding:26px 30px 32px;
+      box-shadow:0 10px 36px -6px rgba(15,23,42,0.5);
+      position:relative;
+      animation:scaleIn .25s ease;
+    }
+    @keyframes scaleIn {
+      0% { transform:scale(.92) translateY(14px); opacity:0;}
+      100% { transform:scale(1) translateY(0); opacity:1;}
+    }
+    @keyframes fadeIn {
+      from { opacity:0;}
+      to { opacity:1;}
+    }
+    .close-btn {
+      position:absolute; top:12px; right:14px;
+      width:36px; height:36px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      background:var(--color-bg-soft);
+      cursor:pointer;
+      font-size:1.1rem;
+      border:1px solid var(--color-bg-glass-border);
+      transition:all var(--transition-fast);
+    }
+    .close-btn:hover { background:var(--color-bg-hover); }
+    .kv-grid {
+      display:grid;
+      grid-template-columns:140px 1fr;
+      row-gap:10px;
+      column-gap:14px;
+      font-size:0.75rem;
+      margin:8px 0 0;
+    }
+    .kv-grid div { line-height:1.35; }
+    .hash-box {
+      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size:0.65rem;
+      background:var(--color-bg-soft);
+      border:1px solid var(--color-border);
+      padding:8px 10px;
+      border-radius:10px;
+      word-break:break-all;
+      position:relative;
+    }
+    .hash-box button {
+      position:absolute;
+      top:4px; right:4px;
+      font-size:0.55rem;
+      padding:4px 8px;
+    }
+    .danger-link { color:#dc2626; cursor:pointer; font-size:0.65rem; }
+    .danger-link:hover { text-decoration:underline; }
+    .chip { display:inline-flex; padding:3px 8px; background:var(--color-bg-soft); border-radius:30px; font-size:.55rem; letter-spacing:.5px; }
+    .sort-indicator { font-size:.65rem; margin-left:3px; opacity:.7; }
+    .nowrap { white-space:nowrap; }
+    .fit-col { width:1%; white-space:nowrap; }
+    .toolbar-sep { width:100%; height:1px; background:var(--color-border); opacity:.4; margin:6px 0 4px; }
+    .multi-select-col { width:34px; text-align:center; }
+    .fade-in { animation:fadeIn .4s ease; }
+    .warn-text { color:#f59e0b; font-size:0.65rem; }
+    .link-btn {
+      background:linear-gradient(135deg,#1e3a8a,#2563eb);
+      color:#fff; padding:6px 12px;
+      border-radius:8px; font-size:.65rem; font-weight:600;
+      display:inline-flex; align-items:center; gap:4px;
+    }
+    .link-btn:hover { filter:brightness(1.1); }
+    /* 最小 fallback 样式（当 style.css 加载失败时 JS 注入 .fallback-active 到 html） */
+    html.fallback-active body {
+      font-family: system-ui, sans-serif;
+      background:#0f172a; color:#e2e8f0;
+    }
+    html.fallback-active .nav-link.active { font-weight:700; color:#fff; }
+  </style>
+</head>
+<body>
+  <nav class="shadow bg-transparent backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">区块链智能合同生成系统</h1>
+      <div class="flex space-x-6 text-sm">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="generator.html" class="nav-link">合同生成</a>
+        <a href="history.html" class="nav-link active">历史记录</a>
+        <a href="settings.html" class="nav-link">系统设置</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <h2 class="section-title" style="margin-top:0;">历史记录</h2>
+
+    <section class="app-section fade-in">
+      <div class="hist-toolbar">
+        <div class="form-group no-float">
+          <label for="filter-template" class="floating">模板</label>
+          <select id="filter-template">
+            <option value="">全部模板</option>
+          </select>
+        </div>
+        <div class="form-group no-float">
+          <label for="filter-date" class="floating">时间范围</label>
+          <select id="filter-date">
+            <option value="">全部</option>
+            <option value="1d">最近24小时</option>
+            <option value="7d">最近7天</option>
+            <option value="30d">最近30天</option>
+          </select>
+        </div>
+      <div style="width:100%;">
+        <div class="form-group" style="width:100%;">
+         <input type="text" id="search-key" placeholder="输入关键词 (模板/ID/文件名/哈希前缀)">
+         <label class="floating">搜索</label>
+         <div class="form-error">请输入关键词</div>
+        </div>
+      </div>
+        <div class="form-group no-float">
+          <label for="sort-select" class="floating">排序</label>
+          <select id="sort-select">
+            <option value="createdAt_desc">时间 ↓</option>
+            <option value="createdAt_asc">时间 ↑</option>
+            <option value="size_desc">大小 ↓</option>
+            <option value="size_asc">大小 ↑</option>
+            <option value="template_asc">模板 A-Z</option>
+            <option value="template_desc">模板 Z-A</option>
+          </select>
+        </div>
+        <div class="form-group no-float">
+          <label for="page-size" class="floating">每页</label>
+          <select id="page-size">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+        <button class="btn" id="apply-filter" type="button" style="padding:12px 18px;">应用筛选</button>
+        <button class="btn btn-secondary" id="reset-filter" type="button" style="padding:12px 18px;">重置</button>
+        <div style="flex:1"></div>
+        <button class="btn btn-secondary" id="export-json" type="button" style="padding:12px 18px;">导出 JSON</button>
+        <button class="btn btn-secondary" id="recalc-hash" type="button" style="padding:12px 18px;">批量校验哈希</button>
+      </div>
+      <div class="toolbar-sep"></div>
+
+      <div class="record-table-wrapper" id="table-wrapper">
+        <div id="skeleton-box" style="padding:10px 14px;">
+          <div class="skeleton-row"></div>
+          <div class="skeleton-row" style="margin-top:8px;"></div>
+          <div class="skeleton-row" style="margin-top:8px;"></div>
+        </div>
+        <table class="records" id="records-table" style="display:none;">
+          <thead>
+            <tr>
+              <th class="multi-select-col"><input type="checkbox" id="check-all"></th>
+              <th>模板</th>
+              <th>文件</th>
+              <th class="nowrap">大小</th>
+              <th class="nowrap">时间</th>
+              <th class="nowrap">链状态</th>
+              <th class="fit-col">操作</th>
+            </tr>
+          </thead>
+          <tbody id="records-tbody"></tbody>
+        </table>
+        <div id="empty-box" class="empty-box" style="display:none;">
+          暂无记录。请先在“合同生成”页面生成合同。<br>
+          <a href="generator.html" class="btn" style="margin-top:16px;">去生成</a>
+        </div>
+      </div>
+      <div class="pagination" id="pagination" style="display:none;"></div>
+    </section>
+  </main>
+
+  <button class="toggle-theme-btn" id="toggle-theme">切换深色</button>
+
+  <!-- 详情弹窗容器 -->
+  <div id="dialog-root"></div>
+
+  <script type="module">
+    /**********************
+     * 1. 基本主题 / Ripple
+     **********************/
+    (function initUI(){
+      // Theme
+      const toggleBtn = document.getElementById('toggle-theme');
+      function applyTheme(mode){
+        document.documentElement.classList.toggle('dark', mode==='dark');
+        localStorage.setItem('ui-theme', mode);
+        toggleBtn.textContent = mode==='dark' ? '切换浅色' : '切换深色';
+      }
+      const saved = localStorage.getItem('ui-theme')
+        || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+      applyTheme(saved);
+      toggleBtn.addEventListener('click', ()=>{
+        const now = document.documentElement.classList.contains('dark') ? 'dark':'light';
+        applyTheme(now==='dark' ? 'light':'dark');
+      });
+      // Ripple
+      document.body.addEventListener('click', e=>{
+        const target = e.target.closest('.btn');
+        if(!target) return;
+          const rect = target.getBoundingClientRect();
+          const ripple = document.createElement('span');
+          ripple.className='ripple';
+          const size=Math.max(rect.width,rect.height);
+          ripple.style.width=ripple.style.height=size+'px';
+          ripple.style.left=(e.clientX-rect.left-size/2)+'px';
+          ripple.style.top=(e.clientY-rect.top-size/2)+'px';
+          target.appendChild(ripple);
+          setTimeout(()=>ripple.remove(),650);
+      });
+    })();
+
+    /**********************
+     * 2. 样式加载失败自愈
+     **********************/
+    (function styleSelfHeal(){
+      const link = document.getElementById('main-style');
+      if(!link) return;
+      link.addEventListener('error', ()=>{
+        console.warn('[history] style.css 加载失败，启用 fallback。');
+        document.documentElement.classList.add('fallback-active');
+        // 可选：动态注入最小按钮样式
+        const minStyle = document.createElement('style');
+        minStyle.textContent = '.btn{background:#2563eb;color:#fff;border-radius:6px;padding:8px 14px;display:inline-block;}';
+        document.head.appendChild(minStyle);
+      }, { once:true });
+    })();
+
+    /**********************
+     * 3. 数据服务
+     **********************/
+    const STORAGE_KEY_INDEX = 'contractRecord:index';
+
+    function loadIndex(){
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_INDEX);
+        if(!raw) return [];
+        return JSON.parse(raw);
+      } catch(e){
+        console.warn('索引解析失败', e);
+        return [];
+      }
+    }
+    function loadRecord(id){
+      try {
+        const raw = localStorage.getItem('contractRecord:'+id);
+        if(!raw) return null;
+        return JSON.parse(raw);
+      } catch(e){
+        return null;
+      }
+    }
+    function loadAllRecords(){
+      const ids = loadIndex();
+      const arr = [];
+      for(const id of ids){
+        const r = loadRecord(id);
+        if(r) arr.push(r);
+      }
+      return arr;
+    }
+
+    // 可插拔：将来换成 IndexedDB 只需替换上面三函数
+
+    /**********************
+     * 4. 过滤 / 排序 / 分页状态
+     **********************/
+    const state = {
+      raw: [],
+      filtered: [],
+      page: 1,
+      pageSize: 10,
+      sort: 'createdAt_desc',
+      template: '',
+      dateScope: '',
+      search: ''
+    };
+
+    function applyFilters(){
+      let arr = [...state.raw];
+
+      // 模板
+      if(state.template){
+        arr = arr.filter(r => r.templateName === state.template);
+      }
+      // 时间范围
+      if(state.dateScope){
+        const now = Date.now();
+          const scopeMap = {
+            '1d': 24*3600*1000,
+            '7d': 7*24*3600*1000,
+            '30d': 30*24*3600*1000
+          };
+          const delta = scopeMap[state.dateScope];
+          if(delta){
+            arr = arr.filter(r => (now - new Date(r.createdAt).getTime()) <= delta);
+          }
+      }
+      // 搜索
+      if(state.search){
+        const kw = state.search.toLowerCase();
+        arr = arr.filter(r=>{
+          return (r.templateName && r.templateName.toLowerCase().includes(kw))
+            || (r.id && r.id.toLowerCase().includes(kw))
+            || (r.fileName && r.fileName.toLowerCase().includes(kw))
+            || (r.sha256 && r.sha256.toLowerCase().startsWith(kw));
+        });
+      }
+      // 排序
+      const [field, dir] = state.sort.split('_');
+      arr.sort((a,b)=>{
+        let va, vb;
+        switch(field){
+          case 'createdAt':
+            va = new Date(a.createdAt).getTime();
+            vb = new Date(b.createdAt).getTime();
+            break;
+          case 'size':
+            va = a.size || 0; vb = b.size || 0;
+            break;
+          case 'template':
+            va = (a.templateName||'').localeCompare(b.templateName||'', 'zh');
+            vb = -(va); // 先赋值再统一处理
+            break;
+          default:
+            va = 0; vb = 0;
+        }
+        if(field==='template'){
+          return dir==='asc' ? va : -va;
+        }
+        return dir==='asc' ? (va - vb) : (vb - va);
+      });
+
+      state.filtered = arr;
+      state.page = 1;
+      renderTable();
+    }
+
+    /**********************
+     * 5. 渲染逻辑
+     **********************/
+    const tbody = document.getElementById('records-tbody');
+    const tableEl = document.getElementById('records-table');
+    const skeletonBox = document.getElementById('skeleton-box');
+    const emptyBox = document.getElementById('empty-box');
+    const paginationEl = document.getElementById('pagination');
+
+    function bytesToHuman(bytes){
+      if(!bytes && bytes!==0) return '-';
+      const units = ['B','KB','MB','GB'];
+      let i=0; let v=bytes;
+      while(v>=1024 && i<units.length-1){ v/=1024; i++; }
+      return v.toFixed(v<10 && i>0 ? 2:1)+' '+units[i];
+    }
+
+    function formatDate(ts){
+      try {
+        const d = new Date(ts);
+        return d.toLocaleString('zh-CN',{ hour12:false });
+      } catch(e){ return ts; }
+    }
+    function getRecordStatus(r) {
+      const isDownloaded = r.downloadedAt || r.downloaded || false;
+      return isDownloaded ? 'downloaded' : 'generated';
+    }
+
+    function chainStatusChip(r){
+      const st = r?.chain?.status || 'not_submitted';
+      const map = {
+        'not_submitted': { text:'未上链', cls:'' },
+        'pending': { text:'上链中', cls:'pending' },
+        'confirmed': { text:'已确认', cls:'confirmed' },
+        'failed': { text:'失败', cls:'failed' }
+      };
+      const obj = map[st] || map['not_submitted'];
+      return `<span class="status-chip ${obj.cls}">${obj.text}</span>`;
+    }
+
+    function getPageSlice(){
+      const start = (state.page-1)*state.pageSize;
+      return state.filtered.slice(start, start + state.pageSize);
+    }
+
+    function renderTable(){
+      // skeleton off
+      skeletonBox.style.display='none';
+
+      const slice = getPageSlice();
+      tbody.innerHTML='';
+      if(!state.filtered.length){
+        tableEl.style.display='none';
+        emptyBox.style.display='block';
+        paginationEl.style.display='none';
+        return;
+      }
+      tableEl.style.display='table';
+      emptyBox.style.display='none';
+
+      // 分组处理
+      const downloaded = slice.filter(r => r.downloadedAt || r.downloaded);
+      const notDownloaded = slice.filter(r => !(r.downloadedAt || r.downloaded));
+
+      // 渲染“未下载”分组
+      if(notDownloaded.length){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="7" style="font-weight:600;color:#f59e0b;background:#fffbe8;">已生成未下载</td>`;
+        tbody.appendChild(tr);
+        notDownloaded.forEach(r=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="multi-select-col"><input type="checkbox" data-id="${r.id}"></td>
+            <td>
+              <div style="font-weight:600; font-size:.78rem;">${r.templateName||'-'}</div>
+              <div style="font-size:.6rem; color:var(--color-text-secondary);">${r.id}</div>
+            </td>
+            <td>
+              <div style="font-size:.7rem;">${r.fileName || '-'}</div>
+              <div class="warn-text" style="display:${r.sha256?'none':'inline-block'};">无哈希</div>
+            </td>
+            <td class="nowrap">${bytesToHuman(r.size)}</td>
+            <td class="nowrap">${formatDate(r.createdAt)}</td>
+            <td>${chainStatusChip(r)}</td>
+            <td class="fit-col">
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" data-act="detail" data-id="${r.id}" style="padding:6px 10px;">详情</button>
+                <button class="btn" data-act="download" data-id="${r.id}" style="padding:6px 10px;">下载</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      // 渲染“已下载”分组
+      if(downloaded.length){
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="7" style="font-weight:600;color:#16a34a;background:#e7fbe8;">已生成已下载</td>`;
+        tbody.appendChild(tr);
+        downloaded.forEach(r=>{
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="multi-select-col"><input type="checkbox" data-id="${r.id}"></td>
+            <td>
+              <div style="font-weight:600; font-size:.78rem;">${r.templateName||'-'}</div>
+              <div style="font-size:.6rem; color:var(--color-text-secondary);">${r.id}</div>
+            </td>
+            <td>
+              <div style="font-size:.7rem;">${r.fileName || '-'}</div>
+              <div class="warn-text" style="display:${r.sha256?'none':'inline-block'};">无哈希</div>
+            </td>
+            <td class="nowrap">${bytesToHuman(r.size)}</td>
+            <td class="nowrap">${formatDate(r.createdAt)}</td>
+            <td>${chainStatusChip(r)}</td>
+            <td class="fit-col">
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" data-act="detail" data-id="${r.id}" style="padding:6px 10px;">详情</button>
+                <button class="btn" data-act="download" data-id="${r.id}" style="padding:6px 10px;">下载</button>
+              </div>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      renderPagination();
+    }
+
+
+    function renderPagination(){
+      const total = state.filtered.length;
+      const pages = Math.ceil(total / state.pageSize);
+      if(pages<=1){
+        paginationEl.style.display='none';
+        return;
+      }
+      paginationEl.style.display='flex';
+      paginationEl.innerHTML='';
+      function addBtn(label, page, disabled=false, active=false){
+        const btn = document.createElement('button');
+          btn.className = 'btn btn-secondary';
+        if(active) btn.classList.add('active');
+        btn.textContent = label;
+        btn.disabled = disabled;
+        btn.addEventListener('click', ()=>{
+          if(page<1 || page>pages) return;
+          state.page = page;
+          renderTable();
+        });
+        paginationEl.appendChild(btn);
+      }
+      addBtn('«', 1, state.page===1);
+      addBtn('‹', state.page-1, state.page===1);
+      // 简单页码窗口
+      const windowSize = 5;
+      let start = Math.max(1, state.page - Math.floor(windowSize/2));
+      let end = start + windowSize -1;
+      if(end > pages){ end = pages; start = Math.max(1, end - windowSize +1); }
+      for(let p=start; p<=end; p++){
+        addBtn(String(p), p, false, p===state.page);
+      }
+      addBtn('›', state.page+1, state.page===pages);
+      addBtn('»', pages, state.page===pages);
+    }
+
+    /**********************
+     * 6. 详情弹窗
+     **********************/
+    const dialogRoot = document.getElementById('dialog-root');
+
+    function showDetail(record){
+      if(!record) return;
+      const div = document.createElement('div');
+      div.className='detail-dialog-backdrop';
+      const chain = record.chain || {};
+      div.innerHTML = `
+        <div class="detail-dialog">
+          <button class="close-btn" data-close>&times;</button>
+          <h3 style="margin:0 0 6px; font-size:1.05rem; font-weight:600; letter-spacing:.5px;">
+            合同详情
+          </h3>
+          <div class="kv-grid">
+            <div>记录ID</div><div>${record.id}</div>
+            <div>模板名称</div><div>${record.templateName||'-'}</div>
+            <div>文件名</div><div>${record.fileName||'-'}</div>
+            <div>生成时间</div><div>${formatDate(record.createdAt)}</div>
+            <div>大小</div><div>${bytesToHuman(record.size)}</div>
+            <div>字体</div><div>${record.font||'-'}</div>
+            <div>预览模式</div><div>${record.previewMode||'-'}</div>
+            <div>页边距</div><div>${record.margin!=null?record.margin+' mm':'-'}</div>
+            <div>链状态</div><div>${chainStatusChip(record)}</div>
+            <div>交易哈希</div><div>${chain.txHash || '-'}</div>
+            <div>区块号</div><div>${chain.blockNumber || '-'}</div>
+            <div>版本</div><div>${record.meta?.version || '-'}</div>
+          </div>
+          <div style="margin-top:16px;">
+            <div style="font-weight:600; font-size:.75rem; letter-spacing:.5px; margin-bottom:6px;">SHA-256</div>
+            <div class="hash-box" id="hash-box">
+              <code>${record.sha256 || '（暂无，需重新计算）'}</code>
+              <button class="btn btn-secondary" data-copy style="padding:4px 8px;">复制</button>
+            </div>
+            <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn" data-rehash style="padding:8px 14px;">重新计算哈希</button>
+              <button class="btn btn-secondary" data-dl-single style="padding:8px 14px;">下载</button>
+              <button class="btn btn-secondary" data-close style="padding:8px 14px;">关闭</button>
+              <span class="danger-link" data-delete>删除记录</span>
+            </div>
+            <div id="rehash-status" style="margin-top:6px; font-size:.65rem; color:var(--color-text-secondary);"></div>
+          </div>
+        </div>
+      `;
+      dialogRoot.appendChild(div);
+
+      div.addEventListener('click', e=>{
+        if(e.target===div || e.target.hasAttribute('data-close')){
+          div.remove();
+        }
+      });
+      div.querySelector('[data-copy]')?.addEventListener('click', ()=>{
+        const hash = record.sha256;
+        if(!hash){ alert('暂无哈希'); return; }
+        navigator.clipboard.writeText(hash).then(()=>{
+          alert('已复制哈希');
+        });
+      });
+      div.querySelector('[data-delete]')?.addEventListener('click', ()=>{
+        if(!confirm('确定删除该记录？此操作不可恢复。')) return;
+        deleteRecord(record.id);
+        div.remove();
+        state.raw = loadAllRecords();
+        buildTemplateOptions();
+        applyFilters();
+      });
+      div.querySelector('[data-dl-single]')?.addEventListener('click', ()=>{
+        downloadRecordFile(record);
+      });
+      div.querySelector('[data-rehash]')?.addEventListener('click', ()=>{
+        recomputeHash(record, div.querySelector('#rehash-status'), true);
+      });
+    }
+
+    /**********************
+     * 7. 哈希计算与校验
+     **********************/
+    async function sha256ArrayBuffer(buf){
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+
+    async function recomputeHash(record, statusEl, updateStore=false){
+      if(statusEl) statusEl.textContent = '正在重新计算哈希...';
+      // 我们需要获取对应 PDF 数据 —— 假设生成时也保存了 base64 (可扩展)
+      // 这里演示：如果没有 base64，我们只能提示无法校验
+      if(!record.base64){
+        if(statusEl) statusEl.textContent = '记录中无 base64 数据，无法重算（请在生成页同时保存 base64）。';
+        return;
+      }
+      try {
+        const binary = atob(record.base64.split(',').pop());
+        const len = binary.length;
+        const buf = new Uint8Array(len);
+        for(let i=0;i<len;i++) buf[i] = binary.charCodeAt(i);
+        const newHash = await sha256ArrayBuffer(buf.buffer);
+        if(statusEl){
+          statusEl.textContent = '新哈希：'+newHash + (record.sha256 ? (newHash===record.sha256 ? '（一致 ✅）':'（不一致 ⚠）') : '（已生成）');
+        }
+        if(updateStore){
+          record.sha256 = newHash;
+          persistRecord(record);
+        }
+      } catch(e){
+        if(statusEl) statusEl.textContent = '哈希计算失败：'+e.message;
+      }
+    }
+
+    async function batchRecalc(){
+      const list = getPageSlice(); // 仅当前页
+      for(const r of list){
+        if(!r.base64) continue;
+        await recomputeHash(r, null, true);
+      }
+      alert('当前页哈希批量校验完成（含 base64 的记录已更新）。');
+      renderTable();
+    }
+
+    /**********************
+     * 8. 下载逻辑（示例）
+     **********************/
+    function downloadRecordFile(record){
+      if(record.base64){
+        const a = document.createElement('a');
+        a.href = record.base64;
+        a.download = record.fileName || (record.templateName||'合同')+'.pdf';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        alert('此记录未存储 PDF base64，无法直接下载。请在生成逻辑中保存 base64。');
+      }
+    }
+
+    /**********************
+     * 9. 删除记录
+     **********************/
+    function deleteRecord(id){
+      try {
+        localStorage.removeItem('contractRecord:'+id);
+        const idx = loadIndex().filter(x=>x!==id);
+        localStorage.setItem(STORAGE_KEY_INDEX, JSON.stringify(idx));
+      } catch(e){
+        console.warn('删除失败', e);
+      }
+    }
+
+    function persistRecord(record){
+      try {
+        localStorage.setItem('contractRecord:'+record.id, JSON.stringify(record));
+      } catch(e){
+        console.warn('记录写入失败', e);
+      }
+    }
+
+    /**********************
+     * 10. 事件绑定
+     **********************/
+    document.getElementById('apply-filter').addEventListener('click', ()=>{
+      state.template = document.getElementById('filter-template').value;
+      state.dateScope = document.getElementById('filter-date').value;
+      state.search = document.getElementById('search-key').value.trim();
+      state.sort = document.getElementById('sort-select').value;
+      state.pageSize = parseInt(document.getElementById('page-size').value,10);
+      applyFilters();
+    });
+    document.getElementById('reset-filter').addEventListener('click', ()=>{
+      document.getElementById('filter-template').value='';
+      document.getElementById('filter-date').value='';
+      document.getElementById('search-key').value='';
+      document.getElementById('sort-select').value='createdAt_desc';
+      document.getElementById('page-size').value='10';
+      state.template=''; state.dateScope=''; state.search=''; state.sort='createdAt_desc'; state.pageSize=10;
+      applyFilters();
+    });
+
+    document.getElementById('export-json').addEventListener('click', ()=>{
+      const blob = new Blob([JSON.stringify(state.filtered,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'contract-history-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('recalc-hash').addEventListener('click', ()=>{
+      batchRecalc();
+    });
+
+    tbody.addEventListener('click', e=>{
+      const btn = e.target.closest('button[data-act]');
+      if(!btn) return;
+      const id = btn.getAttribute('data-id');
+      const record = state.raw.find(r=>r.id===id);
+      if(!record) { alert('记录不存在'); return; }
+      const act = btn.getAttribute('data-act');
+      if(act==='detail') showDetail(record);
+      else if(act==='download') downloadRecordFile(record);
+    });
+
+    document.getElementById('check-all').addEventListener('change', (e)=>{
+      const checked = e.target.checked;
+      tbody.querySelectorAll('input[type=checkbox][data-id]').forEach(c=> c.checked = checked);
+    });
+
+    /**********************
+     * 11. 模板下拉构建
+     **********************/
+    function buildTemplateOptions(){
+      const select = document.getElementById('filter-template');
+      const current = select.value;
+      const names = [...new Set(state.raw.map(r=>r.templateName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+      select.innerHTML = '<option value="">全部模板</option>' + names.map(n=>`<option value="${n}">${n}</option>`).join('');
+      if(names.includes(current)) select.value = current;
+    }
+
+    /**********************
+     * 12. 初始加载
+     **********************/
+    function init(){
+      state.raw = loadAllRecords();
+      buildTemplateOptions();
+      applyFilters();
+    }
+    // 模拟延迟加载
+    setTimeout(()=> init(), 300);
+
+  </script>
+</body>
+</html>

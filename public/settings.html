@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统设置 - 智能合同生成系统</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <!-- 导航栏 -->
+    <nav class="bg-white shadow-lg">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <h1 class="text-xl font-bold text-gray-800">区块链智能合同生成系统</h1>
+            </div>
+            <div class="ml-10 flex items-baseline space-x-4">
+              <a href="index.html" class="nav-link">首页</a>
+              <a href="generator.html" class="nav-link">合同生成</a>
+              <a href="history.html" class="nav-link">历史记录</a>
+              <a href="settings.html" class="nav-link active">系统设置</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 页面内容 -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <h1 class="text-3xl font-bold text-gray-800">系统设置</h1>
+      <p class="mt-4 text-lg text-gray-600">调整智能合同生成系统的配置。</p>
+
+      <!-- 设置表单 -->
+      <form id="settings-form" class="mt-8">
+        <div class="mb-4">
+          <label for="blockchain-network" class="block text-gray-700 text-sm font-bold mb-2">区块链网络：</label>
+          <select id="blockchain-network" name="blockchain-network" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            <option value="ethereum">Ethereum</option>
+            <option value="polygon">Polygon</option>
+            <option value="binance-smart-chain">Binance Smart Chain</option>
+          </select>
+        </div>
+        <div class="mb-4">
+          <label for="contract-storage" class="block text-gray-700 text-sm font-bold mb-2">合同存储方式：</label>
+          <select id="contract-storage" name="contract-storage" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            <option value="ipfs">IPFS</option>
+            <option value="blockchain">区块链</option>
+          </select>
+        </div>
+        <button type="button" id="save-settings" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">保存设置</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="./js/config.js"></script>
+  <script>
+    document.getElementById('save-settings').addEventListener('click', function() {
+      const network = document.getElementById('blockchain-network').value;
+      const storage = document.getElementById('contract-storage').value;
+
+      // 保存设置到 config.js
+      Config.saveSettings({ network, storage });
+      alert('设置保存成功！');
+    });
+  </script>
+</body>
+</html>
