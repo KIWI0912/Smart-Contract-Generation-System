@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>首页 - 区块链智能合同生成系统</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="./css/style.css">
+  <meta name="description" content="区块链智能合同生成系统 - 合同模板管理、生成与历史记录查询">
+</head>
+<body>
+  <!-- 统一导航 -->
+  <nav class="shadow bg-transparent backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <h1 class="text-lg font-semibold">区块链智能合同生成系统</h1>
+      <div class="flex space-x-6 text-sm">
+        <a href="index.html" class="nav-link">首页</a>
+        <a href="generator.html" class="nav-link">合同生成</a>
+          <a href="history.html" class="nav-link">历史记录</a>
+        <a href="settings.html" class="nav-link">系统设置</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <section class="app-section fade-in" style="margin-bottom:34px;">
+      <h2 class="section-title" style="margin-top:0;">欢迎使用</h2>
+      <p style="font-size:0.95rem; color:var(--color-text-secondary); max-width:820px;">
+        本系统提供：合同模板管理、字段动态表单、智能 PDF 生成、可选字体嵌入、历史记录追踪以及多主题外观。
+        通过区块链（可扩展计划）实现溯源与防篡改。点击下方快速入口开始体验。
+      </p>
+      <div class="grid mt-8" style="display:grid; gap:22px; grid-template-columns:repeat(auto-fit,minmax(240px,1fr));">
+        <a href="generator.html" class="quick-card">
+          <h3>生成合同</h3>
+          <p>选择模板 → 填写字段 → 预览 / 下载 PDF</p>
+        </a>
+        <a href="history.html" class="quick-card">
+          <h3>历史记录</h3>
+          <p>查看之前生成的合同记录与下载。</p>
+        </a>
+        <a href="settings.html" class="quick-card">
+          <h3>系统设置</h3>
+          <p>主题 / 字体 / 语言 / PDF相关默认项。</p>
+        </a>
+        <a href="javascript:void(0)" class="quick-card disabled">
+          <h3>区块链上链 (规划)</h3>
+          <p>哈希上链与签名验证功能开发中。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="app-section fade-in">
+      <h2 class="section-title" style="font-size:1.5rem;">使用指引</h2>
+      <ol style="margin:0; padding-left:18px; font-size:0.92rem; line-height:1.7; color:var(--color-text-secondary);">
+        <li>进入 合同生成 页面，选择模板，填写动态字段。</li>
+        <li>点击生成，将自动嵌入中文字体（SimSun）并创建 PDF。</li>
+        <li>在预览区可切换不同预览容器（iframe / object / Data URI）。</li>
+        <li>在历史记录中查看已生成合同（需实现存储逻辑）。</li>
+        <li>在系统设置中调整主题、语言与字号偏好。</li>
+      </ol>
+      <div style="margin-top:18px;">
+        <a href="generator.html" class="btn">立即开始</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" style="text-align:center; padding:28px 16px; font-size:0.75rem; color:var(--color-text-secondary);">
+    © <span id="year-span"></span> 区块链智能合同生成系统. All Rights Reserved.
+  </footer>
+
+  <button class="toggle-theme-btn" id="toggle-theme">切换深色</button>
+
+  <script>
+    /* 基础交互初始化（可抽成 base.js） */
+    (function(){
+      // 当前导航高亮
+      const path = location.pathname.split('/').pop() || 'index.html';
+      document.querySelectorAll('.nav-link').forEach(a=>{
+        if(a.getAttribute('href') === path){
+          a.classList.add('active');
+        } else {
+          a.classList.remove('active');
+        }
+      });
+
+      // 年份
+      const y = new Date().getFullYear();
+      const ySpan = document.getElementById('year-span');
+      if (ySpan) ySpan.textContent = y;
+
+      // Ripple
+      document.body.addEventListener('click', e=>{
+        const btn = e.target.closest('.btn, .quick-card');
+        if(!btn) return;
+        if(btn.classList.contains('disabled')) return;
+        const rect = btn.getBoundingClientRect();
+        const ripple = document.createElement('span');
+        ripple.className='ripple';
+        const size = Math.max(rect.width, rect.height);
+        ripple.style.width = ripple.style.height = size+'px';
+        ripple.style.left = (e.clientX - rect.left - size/2)+'px';
+        ripple.style.top = (e.clientY - rect.top - size/2)+'px';
+        btn.appendChild(ripple);
+        setTimeout(()=>ripple.remove(),650);
+      });
+
+      // Theme
+      const toggleBtn = document.getElementById('toggle-theme');
+      function applyTheme(mode){
+        document.documentElement.classList.toggle('dark', mode==='dark');
+        localStorage.setItem('ui-theme', mode);
+        toggleBtn.textContent = mode==='dark' ? '切换浅色' : '切换深色';
+      }
+      const saved = localStorage.getItem('ui-theme') ||
+        (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light');
+      applyTheme(saved);
+      toggleBtn.addEventListener('click', ()=>{
+        const now = document.documentElement.classList.contains('dark') ? 'dark':'light';
+          applyTheme(now==='dark' ? 'light':'dark');
+      });
+    })();
+  </script>
+
+  <style>
+    /* 首页专属小卡片 */
+    .quick-card {
+      position:relative;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      text-decoration:none;
+      background: var(--color-bg-glass);
+      border:1px solid var(--color-bg-glass-border);
+      border-radius: var(--radius-lg);
+      padding:20px 22px 24px;
+      backdrop-filter: blur(var(--glass-blur));
+      box-shadow: var(--shadow-md);
+      transition: all var(--transition-base);
+      color: var(--color-text);
+      overflow:hidden;
+      font-size:0.9rem;
+    }
+    .quick-card::before {
+      content:"";
+      position:absolute;
+      inset:0;
+      background:
+        radial-gradient(circle at 18% 25%,rgba(59,130,246,0.18),transparent 65%),
+        radial-gradient(circle at 82% 70%,rgba(99,102,241,0.24),transparent 60%);
+      opacity:0;
+      transition:opacity var(--transition-base);
+    }
+    .quick-card h3 {
+      margin:0;
+      font-size:1.05rem;
+      font-weight:600;
+      letter-spacing:.3px;
+      background: linear-gradient(90deg,#1e3a8a,#2563eb);
+      -webkit-background-clip:text;
+      color:transparent;
+    }
+    .quick-card p {
+      margin:0;
+      color: var(--color-text-secondary);
+      line-height:1.45;
+    }
+    .quick-card:hover {
+      transform: translateY(-4px);
+      box-shadow:0 10px 28px -4px rgba(30,64,175,0.35);
+    }
+    .quick-card:hover::before { opacity:1; }
+    .quick-card.disabled {
+      opacity:.55;
+      cursor:not-allowed;
+      filter:grayscale(.15);
+    }
+    .quick-card.disabled:hover {
+      transform:none;
+      box-shadow: var(--shadow-md);
+    }
+  </style>
+</body>
+</html>
